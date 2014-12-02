@@ -1,5 +1,6 @@
 (function() {
     var client = require('swagger-client'),
+        util   = require('util'),
         config = {
                 fileOutput: null,
                 filePath: null,
@@ -39,30 +40,50 @@
                                         model,
                                         modelName,
                                         property,
-                                        script;
+                                        script,
+                                        scriptModel,
+                                        scriptValidation;
+                                    script = [];
                                     if (swagger.ready === true) {
-                                        script = [
-                                            '(function () {'
-                                        ];
                                         for (apiName in swagger.apis) {
                                             api = swagger.apis[apiName];
                                             for (modelName in api.models) {
                                                 model = api.models[modelName];
-                                                script.push.apply(script, [
-                                                    '   var ' + model.name + ' = Backbone.Model.extend({',
-                                                    '       defaults: {'
-                                                ]);
+                                                scriptModel = [];
+                                                scriptValidation = [];
                                                 for (var _i = 0, _len = model.properties.length; _i < _len; _i++) {
                                                     property = model.properties[_i];
-                                                    script.push('           ' + property.name + ': ' + property.defaultValue);
+                                                    if (scriptModel.length > 0) {
+                                                        scriptModel[scriptModel.length - 1] += ',';
+                                                    }
+                                                    if (property.defaultValue !== null) {
+                                                        property.defaultValue = util.format('\'%s\'', property.defaultValue);
+                                                    }
+                                                    scriptModel.push(util.format('           %s: %s', property.name, property.defaultValue));
+                                                    if (property.required) {
+                                                        scriptValidation.push.apply(scriptValidation, [
+                                                            util.format('           if (!attrs.%s) {', property.name),
+                                                            util.format('               return \'Please fill %s field.\';', property.name),
+                                                            '           }'
+                                                        ]);
+                                                    }
                                                 }
                                                 script.push.apply(script, [
+                                                    '   var ' + model.name + ' = Backbone.Model.extend({',
+                                                    '       urlRoot: \'' + api.basePath + '/' + api.path + '\',',
+                                                    '       url: function() {',
+                                                    '           return this.urlRoot + \'/\' + this.id;',
+                                                    '       },',
+                                                    '       defaults: {',
+                                                    scriptModel.join('\n'),
+                                                    '       },',
+                                                    '       validate: function (attrs) {',
+                                                    scriptValidation.join('\n'),
                                                     '       }',
                                                     '   });'
                                                 ]);
                                             }
                                         }
-                                        script.push('})();');
                                         return reply(script.join('\n')).type('application/javascript');
                                     }
                                 },
